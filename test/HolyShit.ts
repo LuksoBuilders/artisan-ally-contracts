@@ -28,7 +28,8 @@ describe("HolyShit", function () {
     const HolyShit = await hre.ethers.getContractFactory("HolyShit");
     const holyShit = await HolyShit.deploy(
       await apexDeities.getAddress(),
-      owner.address
+      owner.address,
+      "0x00008019f9b1002099d843a40461256a5eaed7830c7a2e86cabcb787eb2ead7d2e96601b8117d055697066733a2f2f516d547537524356734e51506a7a3252654a53544a32687a706569463847334e4c314672567878664832726e6f37"
     );
 
     return { apexDeities, owner, otherAccount, holyShit };
@@ -47,7 +48,9 @@ describe("HolyShit", function () {
       expect(await holyShit.owner()).to.equal(owner.address);
 
       expect(await holyShit.SHIT_COOLDOWN()).to.equal(24 * 60 * 60);
-      expect(await holyShit.LAST_POSSIBLE_MINT_BEFORE()).to.equal(1000 * 1000);
+      expect(await holyShit.LAST_POSSIBLE_MINT_BEFORE()).to.equal(
+        ethers.parseEther(String(1000 * 1000))
+      );
     });
   });
 
@@ -57,10 +60,18 @@ describe("HolyShit", function () {
         deployFixture
       );
 
-      expect(await holyShit.shitPerCyclePerTier(0)).to.equal(400);
-      expect(await holyShit.shitPerCyclePerTier(1)).to.equal(300);
-      expect(await holyShit.shitPerCyclePerTier(2)).to.equal(200);
-      expect(await holyShit.shitPerCyclePerTier(3)).to.equal(100);
+      expect(await holyShit.shitPerCyclePerTier(0)).to.equal(
+        ethers.parseEther("400")
+      );
+      expect(await holyShit.shitPerCyclePerTier(1)).to.equal(
+        ethers.parseEther("300")
+      );
+      expect(await holyShit.shitPerCyclePerTier(2)).to.equal(
+        ethers.parseEther("200")
+      );
+      expect(await holyShit.shitPerCyclePerTier(3)).to.equal(
+        ethers.parseEther("100")
+      );
     });
   });
 
@@ -106,7 +117,9 @@ describe("HolyShit", function () {
 
       await holyShit.connect(otherAccount).shit(numberToBytes32(0));
 
-      expect(await holyShit.balanceOf(otherAccount)).to.equal(400);
+      expect(await holyShit.balanceOf(otherAccount)).to.equal(
+        ethers.parseEther("400")
+      );
 
       expect(await holyShit.lastShitTime(numberToBytes32(0))).to.not.equal(0);
       expect(await holyShit.lastShitTime(numberToBytes32(1))).to.equal(0);
@@ -120,7 +133,9 @@ describe("HolyShit", function () {
 
       await holyShit.connect(otherAccount).shit(numberToBytes32(0));
 
-      expect(await holyShit.balanceOf(otherAccount)).to.equal(800);
+      expect(await holyShit.balanceOf(otherAccount)).to.equal(
+        ethers.parseEther("800")
+      );
 
       let totalMinted = 800;
       for (let i = 0; i < 2498; i++) {
@@ -130,9 +145,13 @@ describe("HolyShit", function () {
         await holyShit.connect(otherAccount).shit(numberToBytes32(0));
 
         totalMinted += 400;
-        expect(await holyShit.balanceOf(otherAccount)).to.equal(totalMinted);
+        expect(await holyShit.balanceOf(otherAccount)).to.equal(
+          ethers.parseEther(String(totalMinted))
+        );
       }
-      expect(await holyShit.totalSupply()).to.equal(1000000);
+      expect(await holyShit.totalSupply()).to.equal(
+        ethers.parseEther("1000000")
+      );
 
       unlockTime = (await time.latest()) + 24 * 60 * 60;
       await time.increaseTo(unlockTime);
@@ -168,7 +187,9 @@ describe("HolyShit", function () {
 
       await holyShit.connect(otherAccount).batchShit(tokenIds);
 
-      expect(await holyShit.balanceOf(otherAccount)).to.equal(1000);
+      expect(await holyShit.balanceOf(otherAccount)).to.equal(
+        ethers.parseEther("1000")
+      );
     });
   });
 });

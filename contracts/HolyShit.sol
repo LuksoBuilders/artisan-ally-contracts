@@ -6,7 +6,7 @@ import {LSP7DigitalAsset} from "@lukso/lsp-smart-contracts/contracts/LSP7Digital
 
 contract HolyShit is LSP7DigitalAsset {
     uint256 public constant SHIT_COOLDOWN = 24 hours;
-    uint256 public constant LAST_POSSIBLE_MINT_BEFORE = 1_000_000;
+    uint256 public constant LAST_POSSIBLE_MINT_BEFORE = 1_000_000 * 1 ether;
 
     IApexDeities public apexDeities;
 
@@ -14,18 +14,23 @@ contract HolyShit is LSP7DigitalAsset {
 
     constructor(
         address apexDeitiesAddress,
-        address owner
+        address owner,
+        bytes memory initialData
     ) LSP7DigitalAsset("HolyShit", "HSHT", owner, 0, false) {
         apexDeities = IApexDeities(apexDeitiesAddress);
+        _setData(
+            0x9afb95cacc9f95858ec44aa8c3b685511002e30ae54415823f406128b85b238e,
+            initialData
+        );
     }
 
     function shitPerCyclePerTier(
         IApexDeities.Tier tier
     ) public pure returns (uint256) {
-        if (tier == IApexDeities.Tier.S) return 400;
-        if (tier == IApexDeities.Tier.A) return 300;
-        if (tier == IApexDeities.Tier.B) return 200;
-        if (tier == IApexDeities.Tier.C) return 100;
+        if (tier == IApexDeities.Tier.S) return 400 * 1 ether;
+        if (tier == IApexDeities.Tier.A) return 300 * 1 ether;
+        if (tier == IApexDeities.Tier.B) return 200 * 1 ether;
+        if (tier == IApexDeities.Tier.C) return 100 * 1 ether;
     }
 
     function shit(bytes32 tokenId) public {
