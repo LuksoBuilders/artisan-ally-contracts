@@ -217,10 +217,18 @@ describe("ApexDeities", function () {
         .to.emit(levelManager, "XPIncreased")
         .withArgs(deityId, XPAmount)
         .to.emit(levelManager, "LevelIncreased")
-        .withArgs(deityId, 5, 5);
+        .withArgs(deityId, 4, 4);
 
       expect(await levelManager.deityXPs(deityId)).to.equal(XPAmount);
-      expect(await levelManager.deityLevels(deityId)).to.equal(7);
+      expect(await levelManager.deityLevels(deityId)).to.equal(4);
+
+      await expect(
+        levelManager.connect(xpManipulator).increaseXP(deityId, XPAmount)
+      )
+        .to.emit(levelManager, "XPIncreased")
+        .withArgs(deityId, XPAmount)
+        .to.emit(levelManager, "LevelIncreased")
+        .withArgs(deityId, 3, 7);
     });
   });
 });

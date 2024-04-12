@@ -5,12 +5,13 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import "hardhat/console.sol";
+import {ILevelManager} from "./interfaces/ILevelManager.sol";
 
 contract LevelManager is
     Initializable,
     AccessControlUpgradeable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    ILevelManager
 {
     uint256 public constant CALCULATION_DENOMINATOR = 10000;
     uint256 public _experienceLevelIncreaseNumerator;
@@ -53,6 +54,34 @@ contract LevelManager is
         address newImplementation
     ) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
+    // Getter functions
+    function getExperienceLevelIncreaseNumerator()
+        external
+        view
+        returns (uint256)
+    {
+        return _experienceLevelIncreaseNumerator;
+    }
+
+    function getExperienceLevel(uint256 index) external view returns (uint256) {
+        return experienceLevels[index];
+    }
+
+    function getTotalExperienceLevel(
+        uint256 index
+    ) external view returns (uint256) {
+        return totalExperienceLevels[index];
+    }
+
+    function getDeityXP(uint256 tokenId) external view returns (uint256) {
+        return deityXPs[tokenId];
+    }
+
+    function getDeityLevel(uint256 tokenId) external view returns (uint256) {
+        return deityLevels[tokenId];
+    }
+
+    // XP manipulation function
     function setNextExperienceLevel() public returns (uint256 experience) {
         experience =
             (experienceLevels[experienceLevels.length - 1] *
