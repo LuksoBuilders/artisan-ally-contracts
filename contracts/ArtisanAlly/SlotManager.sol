@@ -30,14 +30,12 @@ contract SlotManager is
 
     function initialize(
         address defaultAdmin,
-        address slotManipulator,
         address levelManager
     ) public initializer {
         __AccessControl_init();
         __UUPSUpgradeable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);
-        _grantRole(SLOT_MANIPULATOR, slotManipulator);
 
         _levelManager = ILevelManager(levelManager);
     }
@@ -45,6 +43,23 @@ contract SlotManager is
     function _authorizeUpgrade(
         address newImplementation
     ) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+
+    // Getter functions
+
+    function getSlotCooldown() external pure returns (uint256) {
+        return SLOT_COOLDOWN;
+    }
+
+    function getSlotCooldown(
+        uint256 deityId,
+        uint256 slot
+    ) external view returns (uint256) {
+        return cooldowns[deityId][slot];
+    }
+
+    function getLevelManager() external view returns (ILevelManager) {
+        return _levelManager;
+    }
 
     // This function provides the base slot of each deity id based on their tier list
     function getBaseSlots(uint256 deityId) public pure returns (uint256 slots) {

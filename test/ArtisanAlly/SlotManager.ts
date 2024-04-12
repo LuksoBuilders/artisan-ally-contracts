@@ -5,7 +5,7 @@ import {
 import { expect } from "chai";
 import hre, { ethers, upgrades } from "hardhat";
 import { Contract } from "ethers";
-import { ArtisanAlly, LevelManager, SlotManager } from "../../typechain-types";
+import { LevelManager, SlotManager } from "../../typechain-types";
 
 describe("ApexDeities", function () {
   async function deployFixture() {
@@ -21,15 +21,6 @@ describe("ApexDeities", function () {
       owner.address,
       "0x00008019f9b1002099d843a40461256a5eaed7830c7a2e86cabcb787eb2ead7d2e96601b8117d055697066733a2f2f516d547537524356734e51506a7a3252654a53544a32687a706569463847334e4c314672567878664832726e6f37"
     );
-
-    const ArtisanAllyImplementation = await hre.ethers.getContractFactory(
-      "ArtisanAlly"
-    );
-
-    const artisanAlly = await upgrades.deployProxy(ArtisanAllyImplementation, [
-      owner.address,
-      upgrader.address,
-    ]);
 
     const LevelManagerImplementation = await hre.ethers.getContractFactory(
       "LevelManager"
@@ -48,9 +39,13 @@ describe("ApexDeities", function () {
 
     const slotManager = (await upgrades.deployProxy(SlotManagerImplementation, [
       owner.address,
-      slotManipulator.address,
       await levelManager.getAddress(),
     ])) as unknown as SlotManager & Contract;
+
+    await slotManager.grantRole(
+      await slotManager.SLOT_MANIPULATOR(),
+      await slotManipulator.getAddress()
+    );
 
     return {
       apexDeities,
@@ -59,7 +54,6 @@ describe("ApexDeities", function () {
       xpManipulator,
       slotManipulator,
       holyShit,
-      artisanAlly,
       levelManager,
       initialLevelExperience,
       slotManager,
