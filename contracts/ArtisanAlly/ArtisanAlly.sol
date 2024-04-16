@@ -8,10 +8,12 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {LSP8IdentifiableDigitalAssetInitAbstract} from "../UpgradeSafeLSPs/lsp8-contracts/contracts/LSP8IdentifiableDigitalAssetInitAbstract.sol";
 
 import {ISlotManager} from "./interfaces/ISlotManager.sol";
-import {IFellowshipFactory} from "./interfaces/IFellowshipFactory.sol";
+import {IBeaconProxyFactory} from "./interfaces/IBeaconProxyFactory.sol";
+import {IFeeCollector} from "./interfaces/IFeeCollector.sol";
+
 import {IApexDeities} from "../IApexDeities.sol";
 
-import {FellowshipBeacon} from "./FellowshipBeacon.sol";
+import {Beacon} from "./Beacon.sol";
 
 contract ArtisanAlly is
     Initializable,
@@ -19,10 +21,22 @@ contract ArtisanAlly is
     UUPSUpgradeable,
     LSP8IdentifiableDigitalAssetInitAbstract
 {
-    FellowshipBeacon public _fellowshipBeacon;
-    IFellowshipFactory public _fellowshipFactory;
+    uint256 public constant CALCULATION_DENOMINATOR = 10000;
+    uint256 public constant EARLY_ACCESS = 7 days;
+
+    Beacon public _fellowshipBeacon;
+    IBeaconProxyFactory public _beaconProxyFactory;
     IApexDeities public _apexDeities;
     ISlotManager public _slotManager;
+    IFeeCollector public _feeCollector;
+
+    address public _contributionBeacon;
+    address public _endorsementBeacon;
+
+    uint256 public _backerbuckInitialPrice;
+    uint256 public _backerbuckPriceGrowth;
+
+    uint256 public _systemFeeShare;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -32,9 +46,12 @@ contract ArtisanAlly is
     function initialize(
         address defaultAdmin,
         address fellowshipBeacon,
-        address fellowshipFactory,
+        address beaconProxyFactory,
         address apexDeities,
-        address slotManager
+        address slotManager,
+        address feeCollector,
+        address contributionBeacon,
+        address endorsementBeacon
     ) public initializer {
         _initialize("MyToken", "MTK", defaultAdmin, 2, 2);
         __AccessControl_init();
@@ -42,15 +59,45 @@ contract ArtisanAlly is
 
         _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);
 
-        _fellowshipBeacon = FellowshipBeacon(fellowshipBeacon);
-        _fellowshipFactory = IFellowshipFactory(fellowshipFactory);
+        _fellowshipBeacon = Beacon(fellowshipBeacon);
+        _beaconProxyFactory = IBeaconProxyFactory(beaconProxyFactory);
         _apexDeities = IApexDeities(apexDeities);
         _slotManager = ISlotManager(slotManager);
+        _feeCollector = IFeeCollector(feeCollector);
+
+        _contributionBeacon = contributionBeacon;
+        _endorsementBeacon = endorsementBeacon;
+
+        changeBackerBuckPrice(1 ether, 150);
+
+        _systemFeeShare = 2000;
     }
 
     function _authorizeUpgrade(
         address newImplementation
     ) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+
+    function changeSystemFeeShare(
+        uint256 newSystemFeeShare
+    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newSystemFeeShare > 2000) {
+            revert SystemFeeShareOutOfBound();
+        }
+        _systemFeeShare = newSystemFeeShare;
+        emit SystemFeeShareChange(newSystemFeeShare);
+    }
+
+    function changeBackerBuckPrice(
+        uint256 backerbuckInitialPrice,
+        uint256 backerbuckPriceGrowth
+    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _backerbuckInitialPrice = backerbuckInitialPrice;
+        _backerbuckPriceGrowth = backerbuckPriceGrowth;
+        emit BackerBuckPricesChange(
+            backerbuckInitialPrice,
+            backerbuckPriceGrowth
+        );
+    }
 
     // view functions
     function getFellowshipTokenId(
@@ -86,9 +133,21 @@ contract ArtisanAlly is
         }
         _slotManager.useSlot(deityId, slot);
         address fellowshipContractAddress = address(
-            _fellowshipFactory.createFellowshipBeaconProxy(
+            _beaconProxyFactory.createBeaconProxy(
                 address(_fellowshipBeacon),
-                abi.encodeWithSignature("initialize()")
+                abi.encodeWithSignature(
+                    "setup(address,address,address,uint256,address,address,address,uint256,uint256,uint256)",
+                    address(this),
+                    address(_apexDeities),
+                    address(_feeCollector),
+                    deityId,
+                    address(_beaconProxyFactory),
+                    _contributionBeacon,
+                    _endorsementBeacon,
+                    _backerbuckInitialPrice,
+                    _backerbuckPriceGrowth,
+                    block.timestamp + EARLY_ACCESS
+                )
             )
         );
         _mint(
@@ -97,14 +156,30 @@ contract ArtisanAlly is
             true,
             ""
         );
-        emit FellowshipFounded(fellowshipContractAddress, deityId, artisan);
+        emit FellowshipFounded(
+            fellowshipContractAddress,
+            deityId,
+            artisan,
+            _backerbuckInitialPrice,
+            _backerbuckPriceGrowth
+        );
     }
 
     error NotDeityOwner();
+    error SystemFeeShareOutOfBound();
+
+    event SystemFeeShareChange(uint256 newSystemFeeShare);
 
     event FellowshipFounded(
         address indexed fellowship,
         uint256 indexed deityId,
-        address indexed artisan
+        address indexed artisan,
+        uint256 initialPrice,
+        uint256 priceGrowth
+    );
+
+    event BackerBuckPricesChange(
+        uint256 backerbuckInitialPrice,
+        uint256 backerbuckPriceGrowth
     );
 }
