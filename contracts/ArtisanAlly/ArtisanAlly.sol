@@ -29,6 +29,7 @@ contract ArtisanAlly is
     IApexDeities public _apexDeities;
     ISlotManager public _slotManager;
     IFeeCollector public _feeCollector;
+    address public _holyShitAddress;
 
     address public _contributionBeacon;
     address public _endorsementBeacon;
@@ -50,6 +51,7 @@ contract ArtisanAlly is
         address apexDeities,
         address slotManager,
         address feeCollector,
+        address holyShitAddress,
         address contributionBeacon,
         address endorsementBeacon
     ) public initializer {
@@ -59,15 +61,20 @@ contract ArtisanAlly is
 
         _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);
 
-        _fellowshipBeacon = Beacon(fellowshipBeacon);
-        _beaconProxyFactory = IBeaconProxyFactory(beaconProxyFactory);
-        _apexDeities = IApexDeities(apexDeities);
-        _slotManager = ISlotManager(slotManager);
-        _feeCollector = IFeeCollector(feeCollector);
-
-        _contributionBeacon = contributionBeacon;
-        _endorsementBeacon = endorsementBeacon;
-
+        {
+            _fellowshipBeacon = Beacon(fellowshipBeacon);
+            _beaconProxyFactory = IBeaconProxyFactory(beaconProxyFactory);
+        }
+        {
+            _apexDeities = IApexDeities(apexDeities);
+            _slotManager = ISlotManager(slotManager);
+            _feeCollector = IFeeCollector(feeCollector);
+            _holyShitAddress = holyShitAddress;
+        }
+        {
+            _contributionBeacon = contributionBeacon;
+            _endorsementBeacon = endorsementBeacon;
+        }
         changeBackerBuckPrice(1 ether, 150);
 
         _systemFeeShare = 2000;
@@ -136,10 +143,11 @@ contract ArtisanAlly is
             _beaconProxyFactory.createBeaconProxy(
                 address(_fellowshipBeacon),
                 abi.encodeWithSignature(
-                    "setup(address,address,address,uint256,address,address,address,uint256,uint256,uint256)",
+                    "setup(address,address,address,address,uint256,address,address,address,uint256,uint256,uint256)",
                     address(this),
                     address(_apexDeities),
                     address(_feeCollector),
+                    _holyShitAddress,
                     deityId,
                     address(_beaconProxyFactory),
                     _contributionBeacon,

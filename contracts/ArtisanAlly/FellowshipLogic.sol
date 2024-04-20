@@ -10,8 +10,6 @@ import {IApexDeities} from "../IApexDeities.sol";
 import {IFeeCollector} from "./interfaces/IFeeCollector.sol";
 import {IArtisanAlly} from "./interfaces/IArtisanAlly.sol";
 
-import "hardhat/console.sol";
-
 contract FellowshipLogic is Initializable, LSP7DigitalAssetInitAbstract {
     uint256 public constant CALCULATION_DENOMINATOR = 10000;
 
@@ -28,6 +26,7 @@ contract FellowshipLogic is Initializable, LSP7DigitalAssetInitAbstract {
 
     address public _contributionTokenAddress;
     address public _endorsementTokenAddress;
+    address public _holyShitAddress;
 
     uint256 public _backerbuckInitialPrice;
     uint256 public _backerbuckPriceGrowth;
@@ -43,6 +42,7 @@ contract FellowshipLogic is Initializable, LSP7DigitalAssetInitAbstract {
         address artisanAlly,
         address apexDeities,
         address feeCollector,
+        address holyShitAddress,
         uint256 founderDeity,
         address beaconProxyFactory,
         address contributionBeacon,
@@ -59,6 +59,7 @@ contract FellowshipLogic is Initializable, LSP7DigitalAssetInitAbstract {
         founder = founderDeity;
         _beaconProxyFactory = IBeaconProxyFactory(beaconProxyFactory);
         _feeCollector = IFeeCollector(feeCollector);
+        _holyShitAddress = holyShitAddress;
 
         _contributionBeacon = contributionBeacon;
         _endorsementBeacon = endorsementBeacon;
@@ -80,7 +81,14 @@ contract FellowshipLogic is Initializable, LSP7DigitalAssetInitAbstract {
         _contributionTokenAddress = address(
             _beaconProxyFactory.createBeaconProxy(
                 address(_contributionBeacon),
-                abi.encodeWithSignature("initialize()")
+                abi.encodeWithSignature(
+                    "initialize(string,string,address,address,address)",
+                    name_,
+                    symbol_,
+                    address(_artisanAlly),
+                    address(this),
+                    _holyShitAddress
+                )
             )
         );
 
@@ -88,7 +96,13 @@ contract FellowshipLogic is Initializable, LSP7DigitalAssetInitAbstract {
         _endorsementTokenAddress = address(
             _beaconProxyFactory.createBeaconProxy(
                 address(_endorsementBeacon),
-                abi.encodeWithSignature("initialize()")
+                abi.encodeWithSignature(
+                    "initialize(string,string,address,address)",
+                    name_,
+                    symbol_,
+                    address(_artisanAlly),
+                    address(this)
+                )
             )
         );
     }

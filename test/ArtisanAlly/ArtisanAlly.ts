@@ -15,6 +15,28 @@ import {
 } from "../../typechain-types";
 import { Contract } from "ethers";
 
+const bigIntMultiply = (target: bigint, times: number) => {
+  let result: bigint = target;
+  while (times > 0) {
+    result = (result * BigInt(10150)) / BigInt(10000);
+    times--;
+  }
+  return result;
+};
+
+function numberToBytes32(num: number): string {
+  // Convert the number to hexadecimal string
+  const hex = num.toString(16);
+
+  // Pad the hexadecimal string with leading zeros to ensure it has an even length
+  const paddedHex = hex.length % 2 === 0 ? hex : "0" + hex;
+
+  // Convert the padded hexadecimal string to bytes32
+  const bytes32 = "0x" + paddedHex.padStart(64, "0");
+
+  return bytes32;
+}
+
 describe("Artisan Ally", function () {
   async function deployFixture() {
     const [
@@ -25,6 +47,9 @@ describe("Artisan Ally", function () {
       artisan,
       deityOwner,
       newArtisan,
+      builderTeam,
+      marketingTeam,
+      newTeam,
     ] = await hre.ethers.getSigners();
 
     const ApexDeities = await hre.ethers.getContractFactory("ApexDeities");
@@ -114,8 +139,19 @@ describe("Artisan Ally", function () {
 
     const feeCollector = (await upgrades.deployProxy(
       FeeCollectorImplementation,
-      [owner.address]
+      [
+        owner.address,
+        await apexDeities.getAddress(),
+        await levelManager.getAddress(),
+        builderTeam.address,
+        marketingTeam.address,
+      ]
     )) as unknown as FeeCollector & Contract;
+
+    await levelManager.grantRole(
+      await levelManager.EXPERIENCE_MANIPULATOR(),
+      await feeCollector.getAddress()
+    );
 
     const artisanAlly = (await upgrades.deployProxy(ArtisanAllyImplementation, [
       owner.address,
@@ -124,6 +160,7 @@ describe("Artisan Ally", function () {
       await apexDeities.getAddress(),
       await slotManager.getAddress(),
       await feeCollector.getAddress(),
+      await holyShit.getAddress(),
       await contributionBeacon.getAddress(),
       await endorsementBeacon.getAddress(),
     ])) as unknown as ArtisanAlly & Contract;
@@ -140,6 +177,9 @@ describe("Artisan Ally", function () {
       xpManipulator,
       slotManipulator,
       deityOwner,
+      builderTeam,
+      marketingTeam,
+      newTeam,
       holyShit,
       artisanAlly,
       levelManager,
@@ -149,6 +189,8 @@ describe("Artisan Ally", function () {
       feeCollector,
       artisan,
       newArtisan,
+      endorsementTokenLogic,
+      contributionTokenLogic,
     };
   }
 
@@ -161,6 +203,7 @@ describe("Artisan Ally", function () {
       deityOwner,
       fellowshipImplementation,
       artisan,
+      endorsementTokenLogic,
     } = fixture;
 
     await apexDeities.connect(deityOwner).mint(
@@ -214,6 +257,33 @@ describe("Artisan Ally", function () {
       fellowshipTokenId,
       fellowship,
       deityId,
+    };
+  }
+
+  async function deployAndCreateAndInitializeFellowship() {
+    const fixture = await loadFixture(deployAndCreateFellowship);
+
+    const {
+      artisan,
+      fellowship,
+      endorsementTokenLogic,
+      contributionTokenLogic,
+    } = fixture;
+
+    await fellowship.connect(artisan).initialize("FLW", "FLW", "0x");
+
+    const endorsementToken = endorsementTokenLogic.attach(
+      await fellowship._endorsementTokenAddress()
+    ) as unknown as EndorsementTokenLogic & Contract;
+
+    const contributionToken = contributionTokenLogic.attach(
+      await fellowship._contributionTokenAddress()
+    ) as unknown as ContributionTokenLogic & Contract;
+
+    return {
+      ...fixture,
+      endorsementToken,
+      contributionToken,
     };
   }
 
@@ -455,6 +525,7 @@ describe("Artisan Ally", function () {
           randomAddress,
           randomAddress,
           randomAddress,
+          randomAddress,
           24,
           randomAddress,
           randomAddress,
@@ -524,14 +595,6 @@ describe("Artisan Ally", function () {
   });
 
   describe("Backer buck miniting", function () {
-    const bigIntMultiply = (target: bigint, times: number) => {
-      let result: bigint = target;
-      while (times > 0) {
-        result = (result * BigInt(10150)) / BigInt(10000);
-        times--;
-      }
-      return result;
-    };
     it("Minting Price", async function () {
       const { artisan, fellowship, artisanAlly } = await loadFixture(
         deployAndCreateFellowship
@@ -660,13 +723,746 @@ describe("Artisan Ally", function () {
     });
   });
 
-  //describe("Fee management", function () {});
+  describe("Fee management", function () {
+    it("Initialize", async function () {
+      const {
+        owner,
+        feeCollector,
+        apexDeities,
+        levelManager,
+        builderTeam,
+        marketingTeam,
+      } = await loadFixture(deployAndCreateFellowship);
+
+      expect(await feeCollector._apexDeities()).to.be.equal(
+        await apexDeities.getAddress()
+      );
+
+      expect(
+        await feeCollector.hasRole(
+          await feeCollector.DEFAULT_ADMIN_ROLE(),
+          owner
+        )
+      ).to.be.equal(true);
+
+      expect(await feeCollector._levelManager()).to.be.equal(
+        await levelManager.getAddress()
+      );
+
+      expect(await feeCollector._builderTeam()).to.be.equal(
+        await builderTeam.getAddress()
+      );
+
+      expect(await feeCollector._marketingTeam()).to.be.equal(
+        await marketingTeam.getAddress()
+      );
+    });
+
+    it("Builder team change", async function () {
+      const {
+        owner,
+        feeCollector,
+        apexDeities,
+        levelManager,
+        artisan,
+        builderTeam,
+        marketingTeam,
+        newTeam,
+      } = await loadFixture(deployAndCreateFellowship);
+
+      await expect(
+        feeCollector.connect(artisan).changeBuilderTeam(newTeam.address)
+      ).to.be.revertedWithCustomError(feeCollector, "NotAuthorized");
+
+      await expect(
+        feeCollector.connect(builderTeam).changeBuilderTeam(newTeam.address)
+      ).to.not.be.revertedWithCustomError(feeCollector, "NotAuthorized");
+
+      await expect(
+        feeCollector.connect(owner).changeBuilderTeam(builderTeam.address)
+      ).to.not.be.revertedWithCustomError(feeCollector, "NotAuthorized");
+
+      await expect(
+        feeCollector.connect(builderTeam).changeBuilderTeam(newTeam.address)
+      )
+        .to.emit(feeCollector, "BuilderTeamChanged")
+        .withArgs(newTeam.address);
+
+      expect(await feeCollector._builderTeam()).to.be.equal(
+        await newTeam.getAddress()
+      );
+    });
+
+    it("Marketing team change", async function () {
+      const {
+        owner,
+        feeCollector,
+        apexDeities,
+        levelManager,
+        artisan,
+        builderTeam,
+        marketingTeam,
+        newTeam,
+      } = await loadFixture(deployAndCreateFellowship);
+
+      await expect(
+        feeCollector.connect(artisan).changeMarketingTeam(newTeam.address)
+      ).to.be.revertedWithCustomError(feeCollector, "NotAuthorized");
+
+      await expect(
+        feeCollector.connect(marketingTeam).changeMarketingTeam(newTeam.address)
+      ).to.not.be.revertedWithCustomError(feeCollector, "NotAuthorized");
+
+      await expect(
+        feeCollector.connect(owner).changeMarketingTeam(marketingTeam.address)
+      ).to.not.be.revertedWithCustomError(feeCollector, "NotAuthorized");
+
+      await expect(
+        feeCollector.connect(marketingTeam).changeMarketingTeam(newTeam.address)
+      )
+        .to.emit(feeCollector, "MarketingTeamChanged")
+        .withArgs(newTeam.address);
+
+      expect(await feeCollector._marketingTeam()).to.be.equal(
+        await newTeam.getAddress()
+      );
+    });
+
+    it("getDirectFeePercent", async function () {
+      const { artisan, fellowship, feeCollector, deityOwner } =
+        await loadFixture(deployAndCreateFellowship);
+
+      await expect(
+        feeCollector.getDirectFeePercent(100)
+      ).to.be.revertedWithCustomError(feeCollector, "NonExistentDeity");
+
+      const sTiers = Array(25)
+        .fill(0)
+        .map((v, i) => i);
+      const aTiers = Array(25)
+        .fill(0)
+        .map((v, i) => i + 25);
+      const bTiers = Array(25)
+        .fill(0)
+        .map((v, i) => i + 50);
+      const cTiers = Array(25)
+        .fill(0)
+        .map((v, i) => i + 75);
+
+      for (const tokenId of sTiers) {
+        expect(await feeCollector.getDirectFeePercent(tokenId)).to.be.equal(
+          1000
+        );
+      }
+
+      for (const tokenId of aTiers) {
+        expect(await feeCollector.getDirectFeePercent(tokenId)).to.be.equal(
+          750
+        );
+      }
+
+      for (const tokenId of bTiers) {
+        expect(await feeCollector.getDirectFeePercent(tokenId)).to.be.equal(
+          500
+        );
+      }
+
+      for (const tokenId of cTiers) {
+        expect(await feeCollector.getDirectFeePercent(tokenId)).to.be.equal(
+          250
+        );
+      }
+    });
+
+    it("getSystemFeePercent", async function () {
+      const { feeCollector } = await loadFixture(deployAndCreateFellowship);
+
+      const sTiers = Array(25)
+        .fill(0)
+        .map((v, i) => i);
+      const aTiers = Array(25)
+        .fill(0)
+        .map((v, i) => i + 25);
+      const bTiers = Array(25)
+        .fill(0)
+        .map((v, i) => i + 50);
+      const cTiers = Array(25)
+        .fill(0)
+        .map((v, i) => i + 75);
+
+      await expect(
+        feeCollector.getSystemFeePercent(100)
+      ).to.be.revertedWithCustomError(feeCollector, "NonExistentDeity");
+
+      for (const tokenId of sTiers) {
+        expect(await feeCollector.getSystemFeePercent(tokenId)).to.be.equal(
+          100
+        );
+      }
+
+      for (const tokenId of aTiers) {
+        expect(await feeCollector.getSystemFeePercent(tokenId)).to.be.equal(75);
+      }
+
+      for (const tokenId of bTiers) {
+        expect(await feeCollector.getSystemFeePercent(tokenId)).to.be.equal(50);
+      }
+
+      for (const tokenId of cTiers) {
+        expect(await feeCollector.getSystemFeePercent(tokenId)).to.be.equal(25);
+      }
+    });
+
+    it("Insert Mint Fee", async function () {
+      const { artisan, fellowship, feeCollector, deityOwner } =
+        await loadFixture(deployAndCreateFellowship);
+
+      const value = (await fellowship.getMintPrice(0, 5))[1];
+      const feeCollectorShare = (value * BigInt(20)) / BigInt(100);
+
+      const sTierDeityShare = (feeCollectorShare * BigInt(10)) / BigInt(100);
+
+      await expect(
+        fellowship.connect(deityOwner).mint(5, {
+          value: value,
+        })
+      )
+        .to.emit(feeCollector, "DirectFeeInserted")
+        .withArgs(1, sTierDeityShare);
+
+      expect(await feeCollector._directFees(1)).to.be.equal(sTierDeityShare);
+    });
+
+    it("Insert Fee", async function () {
+      const { artisan, fellowship, feeCollector, deityOwner } =
+        await loadFixture(deployAndCreateFellowship);
+
+      const value = (await fellowship.getMintPrice(0, 5))[1];
+      const feeCollectorShare = (value * BigInt(20)) / BigInt(100);
+
+      const sTierDeityShare = (feeCollectorShare * BigInt(10)) / BigInt(100);
+      const systemFeeCollectedAtom =
+        (feeCollectorShare - sTierDeityShare) / BigInt(10000);
+
+      await expect(
+        fellowship.connect(deityOwner).mint(5, {
+          value: value,
+        })
+      )
+        .to.emit(feeCollector, "FeeInserted")
+        .withArgs(systemFeeCollectedAtom);
+
+      expect(await feeCollector._directFees(1)).to.be.equal(sTierDeityShare);
+    });
+
+    it("Deity Harvestable Balance", async function () {
+      const { artisan, fellowship, feeCollector, deityOwner } =
+        await loadFixture(deployAndCreateFellowship);
+
+      const value = (await fellowship.getMintPrice(0, 5))[1];
+      const feeCollectorShare = (value * BigInt(20)) / BigInt(100);
+
+      const sTierDeityShare = (feeCollectorShare * BigInt(10)) / BigInt(100);
+      const systemFeeCollectedAtom =
+        (feeCollectorShare - sTierDeityShare) / BigInt(10000);
+
+      await expect(
+        fellowship.connect(deityOwner).mint(5, {
+          value: value,
+        })
+      )
+        .to.emit(feeCollector, "FeeInserted")
+        .withArgs(systemFeeCollectedAtom);
+
+      expect(await feeCollector.deityHarvestableBalance(1)).to.be.equal(
+        sTierDeityShare + systemFeeCollectedAtom * BigInt(100)
+      );
+      expect(await feeCollector.deityHarvestableBalance(4)).to.be.equal(
+        systemFeeCollectedAtom * BigInt(100)
+      );
+      expect(await feeCollector.deityHarvestableBalance(25)).to.be.equal(
+        systemFeeCollectedAtom * BigInt(75)
+      );
+      expect(await feeCollector.deityHarvestableBalance(50)).to.be.equal(
+        systemFeeCollectedAtom * BigInt(50)
+      );
+      expect(await feeCollector.deityHarvestableBalance(75)).to.be.equal(
+        systemFeeCollectedAtom * BigInt(25)
+      );
+    });
+
+    it("Should not be able to harvest if doesn't own the deity", async function () {
+      const { artisan, fellowship, feeCollector, deityOwner } =
+        await loadFixture(deployAndCreateFellowship);
+
+      const value = (await fellowship.getMintPrice(0, 5))[1];
+      const feeCollectorShare = (value * BigInt(20)) / BigInt(100);
+
+      const sTierDeityShare = (feeCollectorShare * BigInt(10)) / BigInt(100);
+      const systemFeeCollectedAtom =
+        (feeCollectorShare - sTierDeityShare) / BigInt(10000);
+
+      await fellowship.connect(deityOwner).mint(5, {
+        value: value,
+      });
+
+      await expect(feeCollector.harvestDeity(1)).to.be.revertedWithCustomError(
+        feeCollector,
+        "NotAuthorized"
+      );
+    });
+
+    it("Should not be able to harvest if does own the deity", async function () {
+      const { levelManager, fellowship, feeCollector, deityOwner } =
+        await loadFixture(deployAndCreateFellowship);
+
+      const value = (await fellowship.getMintPrice(0, 5))[1];
+      const feeCollectorShare = (value * BigInt(20)) / BigInt(100);
+
+      const sTierDeityShare = (feeCollectorShare * BigInt(10)) / BigInt(100);
+      const systemFeeCollectedAtom =
+        (feeCollectorShare - sTierDeityShare) / BigInt(10000);
+
+      await fellowship.connect(deityOwner).mint(5, {
+        value: value,
+      });
+
+      const harvestableBalance = await feeCollector.deityHarvestableBalance(1);
+
+      const beforeHarvestBalance = await ethers.provider.getBalance(
+        await deityOwner.getAddress()
+      );
+      const beforeHarvestFeeCollectorBalance = await ethers.provider.getBalance(
+        await feeCollector.getAddress()
+      );
+
+      expect(await feeCollector.deityHarvestableBalance(1)).to.not.be.equal(0);
+
+      await expect(feeCollector.connect(deityOwner).harvestDeity(1))
+        .to.emit(feeCollector, "DeityHarvested")
+        .withArgs(1, harvestableBalance)
+        .to.emit(levelManager, "XPIncreased")
+        .withArgs(1, harvestableBalance);
+
+      const afterHarvestBalance = await ethers.provider.getBalance(
+        await deityOwner.getAddress()
+      );
+      const afterHarvestFeeCollectorBalance = await ethers.provider.getBalance(
+        await feeCollector.getAddress()
+      );
+
+      expect(await feeCollector.deityHarvestableBalance(1)).to.be.equal(0);
+      expect(afterHarvestBalance).to.be.gt(beforeHarvestBalance);
+      expect(
+        beforeHarvestFeeCollectorBalance - afterHarvestFeeCollectorBalance
+      ).to.be.equal(harvestableBalance);
+    });
+
+    it("Should be able to withdraw builders", async function () {
+      const { builderTeam, fellowship, feeCollector, deityOwner } =
+        await loadFixture(deployAndCreateFellowship);
+
+      const value = (await fellowship.getMintPrice(0, 5))[1];
+      const feeCollectorShare = (value * BigInt(20)) / BigInt(100);
+
+      const sTierDeityShare = (feeCollectorShare * BigInt(10)) / BigInt(100);
+      const systemFeeCollectedAtom =
+        (feeCollectorShare - sTierDeityShare) / BigInt(10000);
+
+      await fellowship.connect(deityOwner).mint(5, {
+        value: value,
+      });
+
+      const buildersShare = systemFeeCollectedAtom * BigInt(1875);
+
+      expect(await feeCollector.buildersWithdrawableBalance()).to.be.equal(
+        buildersShare
+      );
+
+      await expect(
+        feeCollector.connect(deityOwner).withdrawBuilders()
+      ).to.be.revertedWithCustomError(feeCollector, "NotAuthorized");
+
+      const beforeWithdrawBalance = await ethers.provider.getBalance(
+        await builderTeam.getAddress()
+      );
+
+      await expect(feeCollector.connect(builderTeam).withdrawBuilders())
+        .to.emit(feeCollector, "BuilderWithdrawal")
+        .withArgs(builderTeam.address, buildersShare);
+
+      const afterWithdrawBalance = await ethers.provider.getBalance(
+        await builderTeam.getAddress()
+      );
+
+      expect(await feeCollector.buildersWithdrawableBalance()).to.be.equal(0);
+
+      expect(afterWithdrawBalance).to.be.gt(beforeWithdrawBalance);
+    });
+
+    it("Should be able to withdraw marketing", async function () {
+      const {
+        builderTeam,
+        fellowship,
+        feeCollector,
+        deityOwner,
+        marketingTeam,
+      } = await loadFixture(deployAndCreateFellowship);
+
+      const value = (await fellowship.getMintPrice(0, 5))[1];
+      const feeCollectorShare = (value * BigInt(20)) / BigInt(100);
+
+      const sTierDeityShare = (feeCollectorShare * BigInt(10)) / BigInt(100);
+      const systemFeeCollectedAtom =
+        (feeCollectorShare - sTierDeityShare) / BigInt(10000);
+
+      await fellowship.connect(deityOwner).mint(5, {
+        value: value,
+      });
+
+      const marketingShare = systemFeeCollectedAtom * BigInt(1875);
+
+      expect(await feeCollector.marketingWithdrawableBalance()).to.be.equal(
+        marketingShare
+      );
+
+      await expect(
+        feeCollector.connect(deityOwner).withdrawMarketing()
+      ).to.be.revertedWithCustomError(feeCollector, "NotAuthorized");
+
+      const beforeWithdrawBalance = await ethers.provider.getBalance(
+        await marketingTeam.getAddress()
+      );
+
+      await expect(feeCollector.connect(marketingTeam).withdrawMarketing())
+        .to.emit(feeCollector, "MarketingWithdrawal")
+        .withArgs(marketingTeam.address, marketingShare);
+
+      const afterWithdrawBalance = await ethers.provider.getBalance(
+        await marketingTeam.getAddress()
+      );
+
+      expect(await feeCollector.marketingWithdrawableBalance()).to.be.equal(0);
+
+      expect(afterWithdrawBalance).to.be.gt(beforeWithdrawBalance);
+    });
+  });
 
   //
-  //describe("Endorsement", function () {});
+  describe("Endorsement", function () {
+    it("Should be initialized properly", async function () {
+      const { fellowship, fellowshipTokenId, artisanAlly, endorsementToken } =
+        await loadFixture(deployAndCreateAndInitializeFellowship);
+
+      expect(await endorsementToken._artisanAlly()).to.be.equal(
+        await artisanAlly.getAddress()
+      );
+
+      expect(await endorsementToken._fellowship()).to.be.equal(
+        await fellowship.getAddress()
+      );
+
+      expect(await endorsementToken.owner()).to.be.equal(
+        await artisanAlly.tokenOwnerOf(fellowshipTokenId)
+      );
+    });
+
+    it("Should not able to endorse if doesn't have backerbuck", async function () {
+      const { builderTeam, deityOwner, endorsementToken } = await loadFixture(
+        deployAndCreateAndInitializeFellowship
+      );
+
+      await expect(
+        endorsementToken.connect(deityOwner).endorse(5, builderTeam.address)
+      ).to.be.revertedWithCustomError(
+        endorsementToken,
+        "NotOwnEnoughBackerBuck"
+      );
+    });
+
+    it("Should be able to endorse if does have backerbuck", async function () {
+      const { builderTeam, fellowship, deityOwner, endorsementToken } =
+        await loadFixture(deployAndCreateAndInitializeFellowship);
+
+      await fellowship.connect(deityOwner).mint(5, {
+        value: (await fellowship.getMintPrice(0, 5))[1],
+      });
+
+      const endorser = builderTeam;
+
+      await fellowship
+        .connect(deityOwner)
+        .authorizeOperator(await endorsementToken.getAddress(), 5, "0x");
+
+      expect(await fellowship.balanceOf(deityOwner)).to.equal(5);
+      expect(await fellowship.balanceOf(endorsementToken)).to.equal(0);
+
+      await expect(
+        endorsementToken.connect(deityOwner).endorse(5, endorser.address)
+      )
+        .to.emit(endorsementToken, "Endorsed")
+        .withArgs(5, endorser.address);
+
+      expect(await fellowship.balanceOf(deityOwner)).to.equal(0);
+      expect(await fellowship.balanceOf(endorsementToken)).to.equal(5);
+
+      expect(
+        await endorsementToken._endorsementHistory(
+          deityOwner.address,
+          endorser.address
+        )
+      ).to.equal(5);
+
+      expect(await endorsementToken.balanceOf(endorser.address)).to.equal(5);
+
+      await expect(
+        endorsementToken
+          .connect(endorser)
+          .transfer(endorser.address, deityOwner.address, 1, true, "0x")
+      ).to.be.revertedWithCustomError(endorsementToken, "NotTransferable");
+    });
+
+    it("Should not be able to revoke endorsement if haven't endorsed", async function () {
+      const { builderTeam, fellowship, deityOwner, endorsementToken } =
+        await loadFixture(deployAndCreateAndInitializeFellowship);
+
+      const endorser = builderTeam;
+
+      await fellowship.connect(deityOwner).mint(5, {
+        value: (await fellowship.getMintPrice(0, 5))[1],
+      });
+
+      await expect(
+        endorsementToken
+          .connect(deityOwner)
+          .revokeEndorsement(5, builderTeam.address)
+      ).to.be.revertedWithCustomError(endorsementToken, "NotEnoughEndorsed");
+    });
+
+    it("Should be able to to revoke endorsement if have endorsed", async function () {
+      const { builderTeam, fellowship, deityOwner, endorsementToken } =
+        await loadFixture(deployAndCreateAndInitializeFellowship);
+
+      await fellowship.connect(deityOwner).mint(5, {
+        value: (await fellowship.getMintPrice(0, 5))[1],
+      });
+
+      const endorser = builderTeam;
+
+      await fellowship
+        .connect(deityOwner)
+        .authorizeOperator(await endorsementToken.getAddress(), 5, "0x");
+
+      await endorsementToken.connect(deityOwner).endorse(5, endorser.address);
+
+      expect(
+        await endorsementToken._endorsementHistory(
+          deityOwner.address,
+          endorser.address
+        )
+      ).to.equal(5);
+
+      expect(await fellowship.balanceOf(deityOwner)).to.equal(0);
+
+      expect(await endorsementToken.balanceOf(endorser.address)).to.equal(5);
+
+      await expect(
+        endorsementToken
+          .connect(deityOwner)
+          .revokeEndorsement(5, endorser.address)
+      )
+        .to.emit(endorsementToken, "RevokedEndorsement")
+        .withArgs(5, endorser.address);
+
+      expect(
+        await endorsementToken._endorsementHistory(
+          deityOwner.address,
+          endorser.address
+        )
+      ).to.equal(0);
+
+      expect(await fellowship.balanceOf(deityOwner)).to.equal(5);
+
+      expect(await endorsementToken.balanceOf(endorser.address)).to.equal(0);
+    });
+  });
   //
-  //describe("Contribution", function () {});
-  //
-  //describe("Purification", function () {});
-  //
+  describe("Contribution", function () {
+    it("Should be initialized properly", async function () {
+      const {
+        fellowship,
+        fellowshipTokenId,
+        artisanAlly,
+        contributionToken,
+        holyShit,
+      } = await loadFixture(deployAndCreateAndInitializeFellowship);
+
+      expect(await contributionToken._artisanAlly()).to.be.equal(
+        await artisanAlly.getAddress()
+      );
+
+      expect(await contributionToken._fellowship()).to.be.equal(
+        await fellowship.getAddress()
+      );
+
+      expect(await contributionToken._holyShit()).to.be.equal(
+        await holyShit.getAddress()
+      );
+
+      expect(await contributionToken.owner()).to.be.equal(
+        await artisanAlly.tokenOwnerOf(fellowshipTokenId)
+      );
+    });
+
+    it("Should not able to contribute if doesn't have backerbuck", async function () {
+      const { builderTeam, deityOwner, contributionToken } = await loadFixture(
+        deployAndCreateAndInitializeFellowship
+      );
+
+      await expect(
+        contributionToken.connect(deityOwner).contribute(5, builderTeam.address)
+      ).to.be.revertedWithCustomError(
+        contributionToken,
+        "NotOwnEnoughBackerBuck"
+      );
+    });
+
+    it("Should be able to contribute if does have backerbuck", async function () {
+      const { builderTeam, fellowship, deityOwner, contributionToken } =
+        await loadFixture(deployAndCreateAndInitializeFellowship);
+
+      await fellowship.connect(deityOwner).mint(5, {
+        value: (await fellowship.getMintPrice(0, 5))[1],
+      });
+
+      const contribuer = builderTeam;
+
+      await fellowship
+        .connect(deityOwner)
+        .authorizeOperator(await contributionToken.getAddress(), 5, "0x");
+
+      expect(await fellowship.balanceOf(deityOwner)).to.equal(5);
+      expect(await fellowship.balanceOf(contributionToken)).to.equal(0);
+
+      await expect(
+        contributionToken.connect(deityOwner).contribute(5, contribuer.address)
+      )
+        .to.emit(contributionToken, "Contributed")
+        .withArgs(5, contribuer.address);
+
+      expect(await fellowship.balanceOf(deityOwner)).to.equal(0);
+      expect(await fellowship.balanceOf(contributionToken)).to.equal(5);
+
+      expect(
+        await contributionToken._contributionHistory(contribuer.address)
+      ).to.equal(5);
+
+      expect(await contributionToken.balanceOf(contribuer.address)).to.equal(5);
+
+      await expect(
+        contributionToken
+          .connect(contribuer)
+          .transfer(contribuer.address, deityOwner.address, 1, true, "0x")
+      ).to.be.revertedWithCustomError(contributionToken, "NotTransferable");
+    });
+
+    it("Should not be able to purify if haven't contributed or have enough holyshit", async function () {
+      const { builderTeam, fellowship, deityOwner, contributionToken } =
+        await loadFixture(deployAndCreateAndInitializeFellowship);
+
+      const endorser = builderTeam;
+
+      await fellowship.connect(deityOwner).mint(5, {
+        value: (await fellowship.getMintPrice(0, 5))[1],
+      });
+
+      await expect(
+        contributionToken.connect(deityOwner).purify(5)
+      ).to.be.revertedWithCustomError(
+        contributionToken,
+        "NotEnoughContributed"
+      );
+    });
+
+    it("Should be able to to purify contribution if have enough contribution and holy shit", async function () {
+      const {
+        builderTeam,
+        fellowship,
+        deityOwner,
+        contributionToken,
+        holyShit,
+      } = await loadFixture(deployAndCreateAndInitializeFellowship);
+
+      await fellowship.connect(deityOwner).mint(5, {
+        value: (await fellowship.getMintPrice(0, 5))[1],
+      });
+
+      const contributor = deityOwner;
+
+      const divineDungDepot = "0x4242424242424242424242424242424242424242";
+
+      await holyShit.connect(deityOwner).shit(numberToBytes32(0));
+      await holyShit.connect(deityOwner).shit(numberToBytes32(1));
+
+      expect(await holyShit.balanceOf(deityOwner.address)).to.equal(
+        ethers.parseEther("800")
+      );
+
+      await holyShit
+        .connect(deityOwner)
+        .authorizeOperator(
+          await contributionToken.getAddress(),
+          ethers.parseEther("500"),
+          "0x"
+        );
+
+      await fellowship
+        .connect(deityOwner)
+        .authorizeOperator(await contributionToken.getAddress(), 5, "0x");
+
+      // contributing
+      await contributionToken
+        .connect(deityOwner)
+        .contribute(5, contributor.address);
+
+      expect(await contributionToken.balanceOf(contributor.address)).to.equal(
+        5
+      );
+
+      expect(await fellowship.balanceOf(deityOwner.address)).to.equal(0);
+
+      expect(
+        await contributionToken._contributionHistory(contributor.address)
+      ).to.equal(5);
+
+      expect(await fellowship.balanceOf(deityOwner)).to.equal(0);
+
+      expect(await contributionToken.balanceOf(contributor.address)).to.equal(
+        5
+      );
+
+      // purifing
+      await expect(contributionToken.connect(deityOwner).purify(5))
+        .to.emit(contributionToken, "Purified")
+        .withArgs(5);
+
+      expect(await holyShit.balanceOf(deityOwner.address)).to.equal(
+        ethers.parseEther("300")
+      );
+
+      expect(await holyShit.balanceOf(divineDungDepot)).to.equal(
+        ethers.parseEther("500")
+      );
+
+      expect(await contributionToken.balanceOf(contributor.address)).to.equal(
+        5
+      );
+
+      expect(await fellowship.balanceOf(contributor.address)).to.equal(5);
+
+      expect(
+        await contributionToken._contributionHistory(deityOwner.address)
+      ).to.equal(0);
+    });
+  });
 });
